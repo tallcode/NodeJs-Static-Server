@@ -1,0 +1,7 @@
+用Node.JS写的静态文件服务器
+支持重定向
+支持文本压缩
+支持去掉-min
+
+server.js是主文件
+server.vbs是Windows下隐藏运行脚本
