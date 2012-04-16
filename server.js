@@ -135,7 +135,7 @@ sendfile = function(obj){
 	res = obj.res,
 	req = obj.req,
 	//规范文件路径
-	file = path.normalize(obj.file);
+	file = decodeURIComponent(path.normalize(obj.file));
 	//写日志
 	log(obj.host+req.url+' -> '+file);
 	//目标文件写入响应头
