@@ -3,18 +3,24 @@ var util = require('util');
 * 请求对应表
 * forward可以是数组也可以是字符串
 * http开头表示重定向
+* 10.20.136.137是各分支综合的服务器，未压缩
+* 172.22.35.70是预发布服务器，发布脚本改版后，全都是压缩后的代码
 */
 var vhost = [
 	{
 		host:/style\.china\.alibaba\.com/,
 		pathname:/^\/(.*)$/,
-		forward:'http://172.22.35.70/$1'
+		forward:[
+			'http://10.20.136.137/$1',
+			'http://172.22.35.70/$1'
+		]
 	},	
 	{
 		host:/static\.c\.aliimg\.com/,
 		pathname:/^\/(.*)$/,
 		forward:[
 			'D:\\workspace\\static\\$1',
+			'http://10.20.136.137/$1',
 			'http://172.22.35.70/$1'
 		]
 	},

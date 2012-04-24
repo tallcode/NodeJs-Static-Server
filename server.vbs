@@ -1,2 +1,2 @@
 Set ws = CreateObject("Wscript.Shell")   
-ws.run "node server.js",vbhide 
+ws.run "node D:\nodejs\server.js",vbhide 
