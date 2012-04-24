@@ -4,15 +4,16 @@ substitute = function(str, data){
 		return data[m] !== undefined ? data[m] : '{' + m + '}';
 	});
 },
-template = '<html>'+
-							'<head>'+
-								'<meta charset="utf-8"/>'+
-								'<title>{title}</title>'+
-							'</head>'+
-							'<body>'+
-								'{body}'+
-							'</body>'+
-						'</html>';
+template = 	'<html>'+
+						'<head>'+
+							'<meta charset="utf-8"/>'+
+							'<title>{title}</title>'+
+							'<style>a:link,a:hover,a:visited{color:#00E;}</style>'+
+						'</head>'+
+						'<body>'+
+							'{body}'+
+						'</body>'+
+					'</html>';
 					
 
 //返回文件列表html

@@ -35,6 +35,8 @@ if (cluster.isMaster) {
 else{
 	//监听端口
 	http.createServer(function(req,res){
+		//返回服务器标志
+		res.setHeader('Server', serverString);
 		parse({
 			req:req,
 			res:res
@@ -101,7 +103,6 @@ redirect = function(obj){
 	log(obj.host+req.url+' -> '+file);
 	//目标文件写入响应头
 	res.setHeader('X-Forward', file);
-	res.setHeader('Server', serverString);
 	
 	var remoteReq = http.request({
 		host: urlObj.host,
@@ -179,13 +180,12 @@ sendHTML = function(obj,html){
 	res = obj.res;
 	//目标文件写入响应头
 	res.setHeader('X-Forward', obj.file);
-	res.setHeader('Server', serverString);
 	res.writeHead(200, {
 		'Content-Length': html.length,
 		'Content-Type': 'text/html' 
 	});
 	res.write(html);
-	res.end;
+	res.end();
 }
 //发送文件
 sendFile = function(obj){
@@ -198,7 +198,6 @@ sendFile = function(obj){
 	log(obj.host+req.url+' -> '+file);
 	//目标文件写入响应头
 	res.setHeader('X-Forward', file);
-	res.setHeader('Server', serverString);
 	//检查目标文件状态
 	fs.stat(file, function (err,stats) {
 		if(!err){
@@ -255,10 +254,12 @@ sendFile = function(obj){
 			{
 				//如果是目录，目标文件列表头部插入index文件
 				if(stats.isDirectory()){
-					obj.fileList.unshift(file+'/index.html');
-					obj.fileList.unshift(file+'/index.htm');
+					//注意优先级是倒过来的，优先级index.html>index.htm>列出目录					
 					obj.fileList.unshift({type:'list',file:file});
+					obj.fileList.unshift({type:'disk',file:file+'/index.htm'});
+					obj.fileList.unshift({type:'disk',file:file+'/index.html'});
 				}
+
 				//如果目标文件访问出错，且目标文件列表不为空，则使用下一个目标文件响应
 				if(obj.fileList.length>0){
 					response(obj);
