@@ -1,7 +1,18 @@
 用Node.JS写的静态文件服务器
-支持重定向
-支持文本压缩
-支持去掉-min
 
-server.js是主文件
-server.vbs是Windows下隐藏运行脚本
+功能列表:
+	访问磁盘上的静态文件
+	列出目录下的文件
+	重定向到其他的http文件
+	自定义vhost
+	自定义rewrite规则
+	用自定义响应头(X-Forward)返回目标文件
+	JS/CSS/HTML压缩传输
+	对于已经压缩的JS和CSS，自动访问去掉-min后的文件
+
+文件说明:
+	server.js 是主文件
+	mime.js 的功能是根据后缀名找出对应的MIME
+	dirlist.js 的功能是列出目录下面的文件
+	vhost.js 的功能是根据request header，找到对应的响应文件
+	server.vbs 是Windows下隐藏运行脚本
