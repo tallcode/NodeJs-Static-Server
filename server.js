@@ -7,11 +7,19 @@ fs = require('fs'),
 path = require('path'),
 url = require('url'),
 zlib = require("zlib"),
-numCPUs = require('os').cpus().length,
+os = require('os'),
+numCPUs = os.cpus().length,
+serverString = 	'NodeJS(https://github.com/ThinkBest/NodeJs-Static-Server)' + ','+ 
+						os.type() + '('+os.platform() + ')/' + os.release();
 
 mime = require('./mime.js').mime,
 getTarget = require('./vhost.js').getTarget,
-logger = fs.openSync('log.txt','a');
+listFiles = require('./dirlist.js').list,
+//写日志文件
+logger = fs.openSync('log.txt','a'),
+log = function(text){
+    fs.write(logger,(new Date()).toUTCString() + '  ' + text + '\r\n',0,0,null);
+};
 
 //集群
 if (cluster.isMaster) {
@@ -33,11 +41,8 @@ else{
 		});
 	}).listen(80);
 }
-//写日志文件
+
 var 
-log = function(text){
-    fs.write(logger,(new Date()).toUTCString() + '  ' + text + '\r\n',0,0,null);
-},
 //收到请求后
 parse = function(obj) {
 	var
@@ -49,7 +54,11 @@ parse = function(obj) {
 	obj.pathname = urlObj.pathname;
 	//获取参数
 	obj.query = urlObj.query;
-	//获取目标文件列表
+	/*
+	* 获取目标文件列表,函数位于vhost.js文件中，可以自己定义内部逻辑
+	* 传入对象{req,res,host,pathname,query}
+	* 返回数组,例如[{type:'disk','D:\1.js'},{type:'rewrite','http://xxx/1.js'}],当数组中第一个文件访问失败，会使用下一个文件
+	*/
 	obj.fileList = getTarget(obj);
 	if(obj.fileList.length>0){
 		response(obj);
@@ -64,13 +73,21 @@ parse = function(obj) {
 //响应请求
 response = function(obj){
 	//取出目标文件列表中的第一个，判断是发送文件还是重定向
-	obj.file = obj.fileList.shift();
-	if(/^http:\/\//.test(obj.file)){
-		redirect(obj);
+	var target = obj.fileList.shift();
+	if(target&&target.type&&target.file){
+		obj.file = target.file;
+		switch(target.type){
+			case 'redirect':
+				redirect(obj);
+				break;
+			case 'disk':
+				sendFile(obj);
+				break;
+			case 'list':
+				directory(obj);
+				break;
+		}	
 	}
-	else{
-		sendfile(obj);
-	}	
 },
 
 //重定向
@@ -84,6 +101,7 @@ redirect = function(obj){
 	log(obj.host+req.url+' -> '+file);
 	//目标文件写入响应头
 	res.setHeader('X-Forward', file);
+	res.setHeader('Server', serverString);
 	
 	var remoteReq = http.request({
 		host: urlObj.host,
@@ -96,26 +114,28 @@ redirect = function(obj){
 		//如果访问远程文件失败，且目标文件列表不为空，则使用下一个目标文件响应
 		if((remoteRes.statusCode !== 200)&&(obj.fileList.length>0)){
 			response(obj);
-			return;
 		}
-		//复制响应头
-		res.writeHead(remoteRes.statusCode,remoteRes.headers);
-		//复制数据
-		remoteRes.on('data',function(chunk){
-			res.write(chunk);
-		});
-		remoteRes.on('end',function(){
-			res.end();
-		});
+		else{
+			//复制响应头
+			res.writeHead(remoteRes.statusCode,remoteRes.headers);
+			//复制数据
+			remoteRes.on('data',function(chunk){
+				res.write(chunk);
+			});
+			remoteRes.on('end',function(){
+				res.end();
+			});
+		}
 	});
 	remoteReq.on('error',function(){
 		//如果访问远程文件失败，且目标文件列表不为空，则使用下一个目标文件响应
 		if((remoteRes.statusCode !== 200)&&(obj.fileList.length>0)){
 			response(obj);
-			return;
 		}
-		res.statusCode = 503;
-		res.end();
+		else{
+			res.statusCode = 503;
+			res.end();
+		}
 	});
 	//设置3秒后触发超时
 	setTimeout(function() {
@@ -128,9 +148,47 @@ redirect = function(obj){
 	});
 	remoteReq.end();
 },
-
+//列出目录
+directory = function(obj){
+	var 
+	res = obj.res,
+	req = obj.req,
+	html = '',
+	file = decodeURIComponent(path.normalize(obj.file));
+	obj.file = file;
+	fs.readdir(file,function(err,files){
+		if(!err){
+			html = listFiles(obj,files);
+			sendHTML(obj,html);
+		}
+		else{
+			//如果目标文件访问出错，且目标文件列表不为空，则使用下一个目标文件响应
+			if(obj.fileList.length>0){
+				response(obj);
+			}
+			else{
+				res.statusCode = 503;
+				res.end();
+			}
+		}
+	});
+},
+//发送html
+sendHTML = function(obj,html){
+	var
+	res = obj.res;
+	//目标文件写入响应头
+	res.setHeader('X-Forward', obj.file);
+	res.setHeader('Server', serverString);
+	res.writeHead(200, {
+		'Content-Length': html.length,
+		'Content-Type': 'text/html' 
+	});
+	res.write(html);
+	res.end;
+}
 //发送文件
-sendfile = function(obj){
+sendFile = function(obj){
 	var 
 	res = obj.res,
 	req = obj.req,
@@ -140,6 +198,7 @@ sendfile = function(obj){
 	log(obj.host+req.url+' -> '+file);
 	//目标文件写入响应头
 	res.setHeader('X-Forward', file);
+	res.setHeader('Server', serverString);
 	//检查目标文件状态
 	fs.stat(file, function (err,stats) {
 		if(!err){
@@ -198,14 +257,16 @@ sendfile = function(obj){
 				if(stats.isDirectory()){
 					obj.fileList.unshift(file+'/index.html');
 					obj.fileList.unshift(file+'/index.htm');
+					obj.fileList.unshift({type:'list',file:file});
 				}
 				//如果目标文件访问出错，且目标文件列表不为空，则使用下一个目标文件响应
 				if(obj.fileList.length>0){
 					response(obj);
 				}
-				return;
-				res.statusCode =404;
-				res.end();
+				else{
+					res.statusCode =404;
+					res.end();
+				}
 			}
 		}
 		else{
@@ -213,9 +274,10 @@ sendfile = function(obj){
 			if(obj.fileList.length>0){
 				response(obj);
 			}
-			return;
-			res.statusCode = 404;
-			res.end();
+			else{
+				res.statusCode =404;
+				res.end();
+			}
 		}
 	});
 };

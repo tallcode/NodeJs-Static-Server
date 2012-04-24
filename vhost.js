@@ -31,13 +31,18 @@ var vhost = [
 	}
 ];
 
-//放入列表前去除css和js文件的压缩
 var addFile = function (list,file){
 	if(file){
+		//放入列表前去除css和js文件的压缩
 		if(/-min\.(css|js)/.test(file)){
-			list.push(file.replace(/-min.(css|js)/,'.$1'));
+			addFile(list,file.replace(/-min.(css|js)/,'.$1'));
 		}
-		list.push(file);
+		if(/^http(s?):\/\//.test(file)){
+			list.push({type:'redirect',file:file});
+		}
+		else{
+			list.push({type:'disk',file:file});
+		}
 	}
 };
 
