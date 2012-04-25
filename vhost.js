@@ -1,4 +1,3 @@
-var util = require('util');
 /*
 * 请求对应表
 * forward可以是数组也可以是字符串
@@ -7,6 +6,11 @@ var util = require('util');
 * 172.22.35.70是预发布服务器，发布脚本改版后，全都是压缩后的代码
 */
 var vhost = [
+	{
+		host:/.*/,
+		pathname:/favicon\.ico/,
+		forward:404
+	},	
 	{
 		host:/style\.china\.alibaba\.com/,
 		pathname:/^\/(.*)$/,
@@ -56,13 +60,19 @@ exports.getTarget = function(obj){
 	for (var i = 0; i < len; i++) {
 		if(vhost[i].host.test(host)&&vhost[i].pathname.test(pathname)){
 			forward = vhost[i].forward;
-			if(util.isArray(forward)){
-				for(var j=0 ;j<forward.length;j++){
-					addFile(fileList,pathname.replace(vhost[i].pathname,forward[j]));
-				}
-			}
-			else{
-				addFile(fileList,pathname.replace(vhost[i].pathname,forward));
+			switch (Object.prototype.toString.call(forward)){
+				case '[object Array]':
+					for(var j=0 ;j<forward.length;j++){
+						addFile(fileList,pathname.replace(vhost[i].pathname,forward[j]));
+					}
+					break;
+				case '[object String]':
+					addFile(fileList,pathname.replace(vhost[i].pathname,forward));
+					break;
+				case '[object Number]':
+					//新增，直接返回状态
+					fileList.push({type:'code',code:forward});
+					break;
 			}
 			return fileList;
 		}

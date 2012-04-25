@@ -92,6 +92,10 @@ response = function(obj){
 			case 'list':
 				directory(obj);
 				break;
+			//直接返回状态
+			case 'code':
+				obj.res.statusCode = target.code;
+				obj.res.end();
 		}	
 	}
 },
