@@ -1,16 +1,16 @@
 var 
 cluster = require('cluster'),
 http = require('http'),
-events = require('events'),
-util = require('util'),
+//util = require('util'),
 fs = require('fs'),
 path = require('path'),
 url = require('url'),
 zlib = require("zlib"),
 os = require('os'),
 numCPUs = os.cpus().length,
+//服务器标志字符串
 serverString = 	'NodeJS(https://github.com/ThinkBest/NodeJs-Static-Server)' + ','+ 
-						os.type() + '('+os.platform() + ')/' + os.release();
+						os.type() + '('+os.platform() + ')/' + os.release()+','+os.hostname(),
 
 mime = require('./mime.js').mime,
 getTarget = require('./vhost.js').getTarget,
@@ -62,6 +62,7 @@ parse = function(obj) {
 	* 返回数组,例如[{type:'disk','D:\1.js'},{type:'rewrite','http://xxx/1.js'}],当数组中第一个文件访问失败，会使用下一个文件
 	*/
 	obj.fileList = getTarget(obj);
+	//目标文件列表不为空，开始响应请求
 	if(obj.fileList.length>0){
 		response(obj);
 	}
@@ -79,12 +80,15 @@ response = function(obj){
 	if(target&&target.type&&target.file){
 		obj.file = target.file;
 		switch(target.type){
+			//重定向
 			case 'redirect':
 				redirect(obj);
 				break;
+			//磁盘文件
 			case 'disk':
 				sendFile(obj);
 				break;
+			//列出目录
 			case 'list':
 				directory(obj);
 				break;
@@ -159,6 +163,11 @@ directory = function(obj){
 	obj.file = file;
 	fs.readdir(file,function(err,files){
 		if(!err){
+			/*
+			* listFiles函数位于dirlist.js文件中
+			* 可以自己定义内部的逻辑
+			* 只要能返回html就可以
+			*/
 			html = listFiles(obj,files);
 			sendHTML(obj,html);
 		}
@@ -186,7 +195,7 @@ sendHTML = function(obj,html){
 	});
 	res.write(html);
 	res.end();
-}
+},
 //发送文件
 sendFile = function(obj){
 	var 

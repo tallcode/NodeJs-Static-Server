@@ -4,7 +4,8 @@ substitute = function(str, data){
 		return data[m] !== undefined ? data[m] : '{' + m + '}';
 	});
 },
-template = 	'<html>'+
+template = 		'<!DOCTYPE html>'+
+						'<html>'+
 						'<head>'+
 							'<meta charset="utf-8"/>'+
 							'<title>{title}</title>'+
@@ -20,10 +21,12 @@ template = 	'<html>'+
 exports.list = function(obj,files){
 	var
 	html,
+	href = '',
 	arr = [];
 	
 	for(var i =0;i<files.length;i++){
-		arr.push('<li><a href="'+files[i]+'">'+files[i]+'</a></li>');
+		href = obj.pathname+'/'+files[i];
+		arr.push('<li><a href="'+href.replace('//','/')+'">'+files[i]+'</a></li>');
 	}
 	
 	html = substitute(template,{title:'List',body:'<ul>'+arr.join('')+'</ul>'})
