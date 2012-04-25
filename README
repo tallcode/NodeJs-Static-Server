@@ -15,4 +15,3 @@
 	mime.js 的功能是根据后缀名找出对应的MIME
 	dirlist.js 的功能是列出目录下面的文件
 	vhost.js 的功能是根据request header，找到对应的响应文件
-	server.vbs 是Windows下隐藏运行脚本
