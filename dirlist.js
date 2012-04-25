@@ -12,6 +12,7 @@ template = 		'<!DOCTYPE html>'+
 							'<style>a:link,a:hover,a:visited{color:#00E;}</style>'+
 						'</head>'+
 						'<body>'+
+							'<h2>{pathname}</h2>'+
 							'{body}'+
 						'</body>'+
 					'</html>';
@@ -21,14 +22,14 @@ template = 		'<!DOCTYPE html>'+
 exports.list = function(obj,files){
 	var
 	html,
-	href = '',
+	path = obj.pathname+'/',
 	arr = [];
 	
+	path = path.replace('//','/');
 	for(var i =0;i<files.length;i++){
-		href = obj.pathname+'/'+files[i];
-		arr.push('<li><a href="'+href.replace('//','/')+'">'+files[i]+'</a></li>');
+		arr.push('<li><a href="'+path+files[i]+'">'+files[i]+'</a></li>');
 	}
 	
-	html = substitute(template,{title:'List',body:'<ul>'+arr.join('')+'</ul>'})
+	html = substitute(template,{title:'List',pathname:path,body:'<ul>'+arr.join('')+'</ul>'})
 	return html;
 };
