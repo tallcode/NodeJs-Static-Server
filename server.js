@@ -7,6 +7,7 @@ path = require('path'),
 url = require('url'),
 zlib = require("zlib"),
 os = require('os'),
+less = require('less'),
 numCPUs = os.cpus().length,
 //服务器标志字符串
 serverString = 	'NodeJS(https://github.com/ThinkBest/NodeJs-Static-Server)' + ','+ 
@@ -15,10 +16,43 @@ serverString = 	'NodeJS(https://github.com/ThinkBest/NodeJs-Static-Server)' + ',
 mime = require('./mime.js').mime,
 getTarget = require('./vhost.js').getTarget,
 listFiles = require('./dirlist.js').list,
+
+zeroPad = function(num){
+	return ('0'+num).slice(-2); 
+},
+format = function(date, format){
+	var r = format || 'yyyy-MM-dd';
+	return r.split('yyyy').join(date.getFullYear())
+			.split('yy').join((date.getFullYear() + '').substring(2))            
+			.split('MM').join(zeroPad(date.getMonth() + 1))
+			.split('dd').join(zeroPad(date.getDate()))
+			.split('hh').join(zeroPad(date.getHours()))
+			.split('mm').join(zeroPad(date.getMinutes()))
+			.split('ss').join(zeroPad(date.getSeconds()));
+},
+
+getClientIp = function(req) {
+    var ipAddress;
+    var forwardedIpsStr = req.headers['X-Forwarded-For']; 
+    if (forwardedIpsStr) {
+        var forwardedIps = forwardedIpsStr.split(',');
+        ipAddress = forwardedIps[0];
+    }
+    if (!ipAddress) {
+        ipAddress = req.connection.remoteAddress;
+    }
+    return ipAddress;
+},
+
 //写日志文件
-logger = fs.openSync('log.txt','a'),
 log = function(text){
-    fs.write(logger,(new Date()).toUTCString() + '  ' + text + '\r\n',0,0,null);
+	var date = new Date();
+	fs.open('logs/log-'+format(date,'yyyy-MM-dd')+'.txt','a',function(err, fd){
+		if(!err){
+			fs.write(fd,format(date,'hh:mm:ss')+ ' ' + text + '\r\n',0,0,function(){});
+			fs.close(fd);
+		}
+	});    
 };
 
 //集群
@@ -41,7 +75,7 @@ else{
 			req:req,
 			res:res
 		});
-	}).listen(80);
+	}).listen(80).listen(9100);
 }
 
 var 
@@ -49,13 +83,21 @@ var
 parse = function(obj) {
 	var
 	req = obj.req,
-	urlObj = url.parse(req.url||'');
+	urlObj = url.parse(decodeURIComponent(req.url||''));
 	//获取主机名
 	obj.host = req.headers['host']||'';
 	//获取路径名
 	obj.pathname = urlObj.pathname;
 	//获取参数
-	obj.query = urlObj.query;
+	obj.query = urlObj.query||'';
+	//tengine hack
+	if(obj.query.indexOf('?')==0){
+		var tengineParam = obj.query.split('?');
+		obj.pathname = '??'+tengineParam[1];
+		obj.query = tengineParam.length>2?tengineParam[2]:'';
+	}
+	//
+	obj.referer = req.headers['referer']||'';
 	/*
 	* 获取目标文件列表,函数位于vhost.js文件中，可以自己定义内部逻辑
 	* 传入对象{req,res,host,pathname,query}
@@ -77,8 +119,10 @@ parse = function(obj) {
 response = function(obj){
 	//取出目标文件列表中的第一个，判断是发送文件还是重定向
 	var target = obj.fileList.shift();
-	if(target&&target.type&&target.file){
-		obj.file = target.file;
+	if(target&&target.type){
+		if(target.file){
+			obj.file = target.file;
+		}
 		switch(target.type){
 			//重定向
 			case 'redirect':
@@ -92,9 +136,16 @@ response = function(obj){
 			case 'list':
 				directory(obj);
 				break;
+			//合并style
+			case 'combine':
+				filesCombine(obj);
+				break;
 			//直接返回状态
 			case 'code':
 				obj.res.statusCode = target.code;
+				if(target.code===301){
+					obj.res.setHeader('Location', decodeURIComponent(obj.pathname).replace(/^\/301\//,'')+'?'+obj.query);
+				}
 				obj.res.end();
 		}	
 	}
@@ -107,24 +158,21 @@ redirect = function(obj){
 	req = obj.req,
 	file = obj.file,
 	urlObj = url.parse(file||'');
-	//写日志
-	log(obj.host+req.url+' -> '+file);
-	//目标文件写入响应头
-	res.setHeader('X-Forward', file);
 	
+	req.headers['X-Forwarded-For'] = getClientIp(req);
 	var remoteReq = http.request({
-		host: urlObj.host,
+		host: urlObj.hostname,
 		port: urlObj.port||80,
 		path: urlObj.path||obj.pathname,
 		method: req.method||'GET',
 		agent:false,
 		headers: req.headers
 	}, function(remoteRes){
-		//如果访问远程文件失败，且目标文件列表不为空，则使用下一个目标文件响应
-		if((remoteRes.statusCode !== 200)&&(obj.fileList.length>0)){
-			response(obj);
-		}
-		else{
+		if(remoteRes.statusCode === 200){
+			//写日志
+			log(getClientIp(req)+' '+obj.host+req.url+' -> '+file+'(200)');
+			//目标文件写入响应头
+			res.setHeader('X-Forward', file+'(200)');
 			//复制响应头
 			res.writeHead(remoteRes.statusCode,remoteRes.headers);
 			//复制数据
@@ -135,10 +183,26 @@ redirect = function(obj){
 				res.end();
 			});
 		}
+		else if(remoteRes.statusCode === 304){
+			log(getClientIp(req)+' '+obj.host+req.url+' -> '+file+'(304)');
+			//目标文件写入响应头
+			res.setHeader('X-Forward', file+'(304)');
+			//复制响应头
+			res.writeHead(remoteRes.statusCode,remoteRes.headers);
+			res.end();
+		}
+		//如果访问远程文件失败，且目标文件列表不为空，则使用下一个目标文件响应
+		else if(obj.fileList.length>0){
+			response(obj);
+		}
+		else{
+			res.statusCode = 503;
+			res.end();
+		}
 	});
 	remoteReq.on('error',function(){
 		//如果访问远程文件失败，且目标文件列表不为空，则使用下一个目标文件响应
-		if((remoteRes.statusCode !== 200)&&(obj.fileList.length>0)){
+		if(obj.fileList.length>0){
 			response(obj);
 		}
 		else{
@@ -187,12 +251,90 @@ directory = function(obj){
 		}
 	});
 },
+//文件合并
+filesCombine = function(obj){
+	var 
+	res = obj.res,
+	req = obj.req,
+	html = [],
+	counter = 0,
+	file = obj.pathname,
+	ext = path.extname(file),
+	files = [],
+	failFile = [];
+	if(file.indexOf('??')==0){
+		files = file.split('??')[1].split(',');	
+		for(var i=0;i<files.length;i++){
+			files[i] = '/'+files[i];
+		}
+	}
+	if(file.indexOf('|')>0){
+		file = file.slice(0,0-ext.length);
+		files = file.split('|');
+		for(var i=0;i<files.length;i++){
+			files[i]+=ext;
+		}
+	}
+
+	var
+	finish = function(){
+		if(counter==files.length){
+			html = Buffer.concat(html);
+			//写日志
+			log(getClientIp(req)+' '+obj.host+req.url+' -> filesCombine');
+			var
+			type = ext ? ext.slice(1) : 'unknown';
+			var 
+			mimeType = mime[type] || 'application/octet-stream';
+			res.setHeader('X-Forward',JSON.stringify(files));
+			res.setHeader('X-FAIL',JSON.stringify(failFile));
+			obj.res.writeHead(200, {
+				'Content-Length': html.length,
+				'Content-Type': mimeType
+			});
+			obj.res.write(html);
+			obj.res.end();
+		}
+	};
+	for(var i=0;i<files.length;i++){
+		html.push(new Buffer([]));
+		(function(index){
+			var param = {hostname:obj.host, path:files[index],headers:{referer:obj.referer}};
+			http.get(param, function(res) {
+				var response = [];
+				if(res.statusCode==200){
+					res.on('data', function (chunk) {
+						response.push(chunk);
+					});
+					res.on('end',function(){
+						response.push(new Buffer([0x0D,0x0A]));
+						html[index] = Buffer.concat(response);
+						counter++;
+						finish();
+					});
+				}
+				else{
+					counter++;
+					failFile.push(files[index]);
+					finish();
+				}
+				
+			}).on('error', function(e) {
+				counter++;
+				failFile.push(files[index]);
+				finish();
+			});
+		})(i);
+	};	
+},
 //发送html
 sendHTML = function(obj,html){
 	var
 	res = obj.res;
+	//写日志
+	log(getClientIp(req)+' '+obj.host+req.url+' -> html');
 	//目标文件写入响应头
-	res.setHeader('X-Forward', obj.file);
+	res.setHeader('X-Forward', 'html');
 	res.writeHead(200, {
 		'Content-Length': html.length,
 		'Content-Type': 'text/html' 
@@ -207,14 +349,14 @@ sendFile = function(obj){
 	req = obj.req,
 	//规范文件路径
 	file = decodeURIComponent(path.normalize(obj.file));
-	//写日志
-	log(obj.host+req.url+' -> '+file);
-	//目标文件写入响应头
-	res.setHeader('X-Forward', file);
 	//检查目标文件状态
 	fs.stat(file, function (err,stats) {
 		if(!err){
 			if(stats.isFile()){
+				//写日志
+				log(getClientIp(req)+' '+obj.host+req.url+' -> '+file);
+				//目标文件写入响应头
+				res.setHeader('X-Forward', file);
 				//目标是文件
 				var 
 				//获取文件最后修改时间
@@ -228,7 +370,8 @@ sendFile = function(obj){
 				//通用响应头
 				headers = {
 					'Content-Type': mimeType,
-					'Last-Modified':lastModified
+					'Last-Modified':lastModified,
+					'Access-Control-Allow-Origin':'*'
 				};
 				//文件未修改，返回304
 				if (req.headers['if-modified-since'] && lastModified === req.headers['if-modified-since']) { 
@@ -236,30 +379,61 @@ sendFile = function(obj){
 					res.end(); 
 				}
 				else{
-					//文件流
-					var raw = fs.createReadStream(file);
-					//对css/js/html文件做压缩
-					if(/css|js|html|htm/ig.test(ext)){
-						if(/gzip/.test(req.headers['accept-encoding'] || '')){
-							headers['Content-Encoding'] = 'gzip';
-							res.writeHead(200,headers); 
-							raw.pipe(zlib.createGzip()).pipe(res); 
-						}
-						else if(/deflate/.test(req.headers['accept-encoding'] || '')){
-							headers['Content-Encoding'] = 'deflate';
-							res.writeHead(200,headers); 
-							raw.pipe(zlib.createDeflate()).pipe(res); 
+					if(ext==='less'){
+						fs.readFile(file,function (err, data) {
+							if (err) {
+								res.statusCode =500;
+								res.end();
+							}
+							else{
+								try{
+									less.render(data.toString(), function (e, css) {
+										if (e) {
+											headers['Less-Compiler-Error'] = e.toString();
+											res.writeHead(500,headers);
+											res.end();
+										}
+										else{
+											res.writeHead(200,headers);
+											res.write(css);
+											res.end();
+										}
+									});
+								}
+								catch(e){
+									headers['Less-Compiler-Error'] = e.toString();
+									res.writeHead(500,headers);
+									res.end();
+								}
+							}
+						})
+					}
+					else{
+						//文件流
+						var raw = fs.createReadStream(file);
+						//对css/js/html文件做压缩
+						if(/css|js|html|htm/ig.test(ext)){
+							if(/gzip/.test(req.headers['accept-encoding'] || '')){
+								headers['Content-Encoding'] = 'gzip';
+								res.writeHead(200,headers); 
+								raw.pipe(zlib.createGzip()).pipe(res); 
+							}
+							else if(/deflate/.test(req.headers['accept-encoding'] || '')){
+								headers['Content-Encoding'] = 'deflate';
+								res.writeHead(200,headers); 
+								raw.pipe(zlib.createDeflate()).pipe(res); 
+							}
+							else{
+								//浏览器不支持压缩
+								res.writeHead(200,headers);
+								raw.pipe(res);
+							}
 						}
 						else{
-							//浏览器不支持压缩
+							//不是css、js、html则不压缩
 							res.writeHead(200,headers);
 							raw.pipe(res);
 						}
-					}
-					else{
-						//不是css、js、html则不压缩
-						res.writeHead(200,headers);
-						raw.pipe(res);
 					}
 				}
 			}

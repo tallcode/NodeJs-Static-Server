@@ -1,5 +1,6 @@
 exports.mime = {
 	'css'		: 'text/css',
+	'less'		: 'text/css',
 	'gif'		: 'image/gif',
 	'html'	: 'text/html',
 	'htm'	: 'text/html',
