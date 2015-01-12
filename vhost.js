@@ -2,8 +2,6 @@
 * 请求对应表
 * forward可以是数组也可以是字符串
 * http开头表示重定向
-* 10.20.136.137是各分支综合的服务器，未压缩
-* 172.22.35.70是预发布服务器，发布脚本改版后，全都是压缩后的代码
 */
 var vhost = [
 	//favicon.ico直接返回404
@@ -16,49 +14,6 @@ var vhost = [
 		host:/.*/,
 		pathname:/^\/301\/(.*)$/,
 		forward:301
-	},
-	{
-		host:/a(style|static)\.alicdn\.com/,
-		pathname:/\?\?/,
-		forward:'style-combine'
-	},
-	//style-wholesale
-	{
-		host:/(style|astyle)\.(c\.aliimg|alicdn)\.com/,
-		pathname:/^\/app\/wholesale\/(js|css)(\/.*)$/,
-		forward:[
-			'/Users/ThinkBest/Workspace/styles/wholesale/$1$2',
-			'http://110.75.98.154/app/wholesale/$1$2'
-		]
-	},
-	//style-dsc
-	{
-		host:/(style|astyle)\.(c\.aliimg|alicdn)\.com/,
-		pathname:/^\/app\/dsc\/(js|css)(\/.*)$/,
-		forward:[
-			'/Users/ThinkBest/Workspace/styles/dsc/$1$2',
-			'http://110.75.98.154/app/dsc/$1$2'
-		]
-	},
-	//static
-	{
-		host:/(static|incdn|astatic)\.(c\.aliimg|alicdn)\.com/,
-		pathname:/^\/(.*)$/,
-		forward:[
-			'/Users/ThinkBest/Workspace/style/static/$1',
-			'http://110.75.98.154/$1'
-		]
-	},
-	{
-		host:/(style|astyle)\.(c\.aliimg|alicdn)\.com/,
-		pathname:/^\/(.*)$/,
-		forward:'http://110.75.98.154/$1'
-	},	
-	//website
-	{
-		host:/ali-47418w.*/,
-		pathname:/^\/(.*)$/,
-		forward:'/Users/ThinkBest/Workspace/website/$1'
 	},
 	{
 		host:/xutao.*/,
