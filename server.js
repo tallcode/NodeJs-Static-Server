@@ -75,7 +75,7 @@ else{
 			req:req,
 			res:res
 		});
-	}).listen(80).listen(9100);
+	}).listen(80);
 }
 
 var 
